@@ -1,11 +1,8 @@
 # CI Workflow — GitHub Actions
 #
 # This workflow runs automatically whenever code is pushed to `main`
-# or a pull request is opened against `main`.
-#
-# Your job: fill in each TODO step below.
-# Open DEVOPS_GUIDE.md — it walks you through exactly what to paste
-# for each step and explains why it is needed.
+# or a pull request is opened against `main`
+# or manually
 
 name: CI
 
@@ -14,6 +11,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build-and-test:

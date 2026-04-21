@@ -1,156 +1,110 @@
 # dockerized-typescript-api
 
-A minimal TypeScript REST API containerized with Docker and wired to a
-GitHub Actions CI pipeline.
+A minimal TypeScript REST API, containerized with Docker and gated by a GitHub Actions pipeline that enforces every check — including a clean Docker build — on every commit.
 
-A production-ready setup with typed source code, automated tests, a
-linter, a multi-stage Docker image, and a CI workflow that enforces all
-of the above on every push and pull request — including building the
-Docker image as a final verification step.
+[![CI](https://github.com/Thomas-J-Barreras-Consulting/dockerized-typescript-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Thomas-J-Barreras-Consulting/dockerized-typescript-api/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-20-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/typescript-5-3178C6?logo=typescript&logoColor=white)
+![Docker](https://img.shields.io/badge/docker-multi--stage-2496ED?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## Background
+---
 
-This project builds on a previous CI-focused example by adding
-Docker-based containerization and a container-aware CI workflow. The
-app runs locally via Docker Compose and the image is built and verified
-in CI on every commit.
+## Overview
+
+The service itself is deliberately small — two HTTP endpoints over Express — so the surrounding infrastructure is the subject, not a distraction. The project exists to show a working end-to-end setup: typed source, in-process tests against the Express app, a multi-stage container image, and a CI workflow that will not let the repository drift into a broken state.
+
+---
+
+## What this demonstrates
+
+- **Testability by construction.** [src/app.ts](src/app.ts) builds the Express application; [src/server.ts](src/server.ts) owns the `listen()` call. Tests in [test/health.test.ts](test/health.test.ts) exercise the app in-process via supertest — no port binding, no test-only branches, no mocks.
+
+- **Multi-stage Docker image.** [Dockerfile](Dockerfile) compiles TypeScript inside a full `node:20` image, then copies only `dist/` and production dependencies into `node:20-slim`. Dev dependencies and source never reach the runtime image.
+
+- **CI as a contract.** [.github/workflows/ci.yml](.github/workflows/ci.yml) runs lint → test → `tsc` build → `docker build`. The Docker build is the final step on purpose: if the Dockerfile drifts out of sync with a source change, CI fails on the pull request rather than at deploy time.
+
+- **Single sources of truth.** Service name and version come from [package.json](package.json); Node version is pinned in [.nvmrc](.nvmrc). No duplicated constants, no drift.
+
+---
+
+## API
+
+| Method | Path      | Purpose                                     |
+|--------|-----------|---------------------------------------------|
+| GET    | `/`       | Service metadata (name, version, env)       |
+| GET    | `/health` | Liveness check with ISO-8601 timestamp      |
+
+Response shapes are pinned by [test/health.test.ts](test/health.test.ts).
 
 ---
 
 ## Stack
 
-| Tool | Role |
-|------|------|
-| Node.js 20 | Runtime |
-| TypeScript | Type-safe JavaScript |
-| Express | HTTP server |
-| Jest + supertest | Unit and integration tests |
-| ESLint + typescript-eslint | Static analysis and style enforcement |
-| Docker | Containerization (multi-stage build) |
-| Docker Compose | Local container orchestration |
-| GitHub Actions | Continuous integration |
+| Layer     | Choice                                         |
+|-----------|------------------------------------------------|
+| Runtime   | Node.js 20                                     |
+| Language  | TypeScript 5                                   |
+| HTTP      | Express                                        |
+| Tests     | Jest + supertest                               |
+| Lint      | ESLint 9 (flat config) + typescript-eslint 8   |
+| Container | Docker (multi-stage) + Docker Compose          |
+| CI        | GitHub Actions                                 |
 
 ---
 
-## Project Layout
+## Project layout
 
 ```
 src/
-  app.ts          — Creates the Express app (no listen call — testable)
-  server.ts       — Entry point; calls app.listen()
+  app.ts              — Express app factory (no listen call, testable)
+  server.ts           — Entry point; reads PORT, calls app.listen()
   routes/
-    health.ts     — GET / and GET /health handlers
+    health.ts         — GET / and GET /health handlers
 test/
-  health.test.ts  — Tests for both endpoints
-Dockerfile        — Multi-stage build (builder → slim production image)
-docker-compose.yml — Runs the container locally on port 3000
-.github/
-  workflows/
-    ci.yml        — GitHub Actions workflow (lint → test → build → docker build)
+  health.test.ts      — supertest integration tests
+Dockerfile            — Multi-stage build (builder → slim runtime)
+docker-compose.yml    — Local orchestration on port 3000
+.github/workflows/
+  ci.yml              — lint → test → build → docker build
 ```
 
 ---
 
-## API Endpoints
+## Running it
 
-### `GET /`
-
-Returns service metadata.
-
-```json
-{
-  "service": "typescript-api-github-actions-ci",
-  "version": "1.0.0",
-  "environment": "development"
-}
-```
-
-### `GET /health`
-
-Returns a liveness check. Used by load balancers and monitoring tools
-to confirm the service is running.
-
-```json
-{
-  "status": "ok",
-  "service": "typescript-api-github-actions-ci",
-  "timestamp": "2026-03-18T22:15:00.000Z"
-}
-```
-
----
-
-## Local Setup
-
-### Without Docker
-
-**Prerequisites:** Node.js 20 (use `nvm use` if you have nvm installed)
+**With Node directly** (fastest feedback loop):
 
 ```bash
-# Install dependencies
 npm install
-
-# Start the development server (uses ts-node, no build step needed)
-npm run dev
-
-# Run tests
+npm run dev       # ts-node; no build step
 npm test
-
-# Run the linter
 npm run lint
-
-# Compile TypeScript to dist/
-npm run build
-
-# Run the compiled output
-npm start
 ```
 
-### With Docker
-
-**Prerequisites:** Docker Desktop (or Docker Engine + Compose plugin)
+**With Docker:**
 
 ```bash
-# Build and run the container (available at http://localhost:3000)
-docker compose up --build
-
-# Stop the container
-docker compose down
+docker compose up --build    # http://localhost:3000
 ```
 
-To build the image manually without Compose:
-
-```bash
-docker build -t typescript-api .
-docker run -p 3000:3000 typescript-api
-```
-
-The Dockerfile uses a **multi-stage build**: a full `node:20` image
-compiles the TypeScript source, then only the compiled `dist/` output
-and production dependencies are copied into a lean `node:20-slim`
-production image.
+Compose is intentionally thin — the image itself is the interesting artifact.
 
 ---
 
-## CI Pipeline
+## CI pipeline
 
-The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on
-every push to `main` and on every pull request targeting `main`.
+Every push to `main` and every pull request targeting it runs:
 
-**Steps:**
+1. Checkout
+2. Set up Node (version from `.nvmrc`, npm cache enabled)
+3. `npm ci`
+4. `npm run lint`
+5. `npm test`
+6. `npm run build`
+7. `docker build`
 
-1. Check out the code
-2. Set up Node.js 20 (version read from `.nvmrc`, with npm caching)
-3. Install dependencies with `npm ci`
-4. Lint with ESLint
-5. Run tests with Jest
-6. Build with `tsc`
-7. Build the Docker image with `docker build`
-
-A pull request cannot be merged until all seven steps pass. Step 7
-ensures the Dockerfile is always valid and the image can be built from
-a clean checkout — catching container-level breakage the same way steps
-4–6 catch code-level breakage.
+Step 7 guards the container surface the same way steps 4–6 guard the code surface: the Dockerfile must build cleanly from a fresh checkout, every time.
 
 ---
 
